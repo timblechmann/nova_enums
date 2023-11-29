@@ -1,0 +1,14 @@
+[requires]
+boost/1.83.0
+catch2/3.4.0
+fmt/10.1.1
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout
+
+[options]
+boost*:header_only=True
