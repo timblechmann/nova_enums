@@ -79,7 +79,7 @@ namespace impl {
 [[noreturn]] void unreachable()
 {
 #ifdef __cpp_lib_unreachable
-    return std::unreachable();
+    std::unreachable();
 #else
     abort();
 #endif
@@ -553,7 +553,7 @@ struct fmt::formatter< EnumType, char > : fmt::formatter< std::string_view >
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
-struct st::formatter< EnumType, char > : st::formatter< std::string_view >
+struct std::formatter< EnumType, char > : std::formatter< std::string_view >
 {
     template < typename FormatContext >
     auto format( EnumType value, FormatContext& ctx ) const -> decltype( ctx.out() )
