@@ -145,7 +145,7 @@ TEST_CASE( "enums string adaptor" )
 
 #ifdef __cpp_lib_format
 
-TEST_CASE( "format" )
+TEST_CASE( "std_format" )
 {
     CHECK( std::format( "{}", foo::a ) == "a" );
 }
