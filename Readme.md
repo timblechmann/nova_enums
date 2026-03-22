@@ -54,9 +54,10 @@ constexpr std::array< std::string_view, 3 > all_strings = all_enum_strings< foo 
 
 # Building
 
-Integrate Conan via
 ```
-cmake -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=cmake/conan_provider.cmake [...]
+cmake -B build
+cmake --build build
+ctest --test-dir build
 ```
 
 
