@@ -1,8 +1,16 @@
 cmake_minimum_required(VERSION 3.25)
 
-set(CMAKE_CXX_STANDARD 20)
-
 project(nova_enums VERSION 0.1.0 LANGUAGES CXX)
+
+########################################################################################################################
+
+if (NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
+
+if(NOT CMAKE_MSVC_DEBUG_INFORMATION_FORMAT)
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "Embedded")
+endif()
 
 ########################################################################################################################
 
@@ -50,7 +58,7 @@ if(PROJECT_IS_TOP_LEVEL)
         CPMAddPackage(
             NAME Catch2
             GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-            GIT_TAG v3.13.0
+            GIT_TAG v3.14.0
         )
     endblock()
 endif()
