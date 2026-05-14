@@ -114,6 +114,17 @@ struct string_adapter< my_string_view >
     }
 };
 
+template <>
+struct string_adapter< std::string >
+{
+    std::string operator()( std::string_view sv ) const
+    {
+        return std::string {
+            sv,
+        };
+    }
+};
+
 TEST_CASE( "enums string adaptor" )
 {
     auto asv = my_string_view {
@@ -129,6 +140,7 @@ TEST_CASE( "enums string adaptor" )
     };
 
     CHECK( to_string< my_string_view >( foo::a ) == asv );
+    CHECK( to_string< std::string >( foo::a ) == "a" );
     CHECK( to_enum< foo >( asv ) == foo::a );
 
     auto string_values = { asv, bsv, csv };

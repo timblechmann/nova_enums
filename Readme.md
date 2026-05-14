@@ -22,7 +22,7 @@ enum class foo
     c,
 };
 
-// register enum with library
+// register enum with library (Not necessary with C++26 reflections enabled)
 NOVA_ENUMS_REGISTER( foo, a, b, c ); // order matters!
 
 using namespac nova::enums;
@@ -49,7 +49,7 @@ constexpr std::array< std::string_view, 3 > all_strings = all_enum_strings< foo 
 
 # Dependencies
 * C++20 (with ranges and concepts)
-* Boost (preprocessor)
+* Boost (preprocessor), unless compiled in C++26 (with reflections enabled)
 * Catch2 (for unit tests)
 
 # Building
