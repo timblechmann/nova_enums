@@ -447,7 +447,7 @@ inline constexpr auto all_enum_strings< EnumType, std::string_view >
 #define NOVA_ENUMS_IMPL_MAKE_TABLE_ENTRY_MACRO( r, data, element ) \
     std::pair {                                                    \
         data::element,                                             \
-        std::string_view { BOOST_PP_STRINGIZE( element ) },        \
+        std::string_view { BOOST_PP_STRINGIZE( element ) },          \
         },
 
 #define NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, LIST )                                                     \
@@ -532,7 +532,7 @@ inline constexpr auto all_enum_strings< EnumType, std::string_view >
 //----------------------------------------------------------------------------------------------------------------------
 
 #if __has_include( <fmt/format.h> )
-#    include <fmt/format.h>
+#  include <fmt/format.h>
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
@@ -549,7 +549,7 @@ struct fmt::formatter< EnumType, char > : fmt::formatter< std::string_view >
 
 
 #if __cpp_lib_format
-#    include <format>
+#  include <format>
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
