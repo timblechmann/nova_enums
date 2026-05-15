@@ -22,7 +22,14 @@
 //
 // As a non-binding request, please use this code responsibly and ethically.
 
-#include <boost/preprocessor.hpp>
+#if defined( __cpp_reflection ) || defined( __cpp_impl_reflection )
+#  define NOVA_ENUMS_HAS_REFLECTION
+#  include <meta>
+#endif
+
+#ifndef NOVA_ENUMS_HAS_REFLECTION
+#  include <boost/preprocessor.hpp>
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -38,6 +45,7 @@ namespace nova::enums {
 
 //----------------------------------------------------------------------------------------------------------------------
 
+/// Cast enum value to its underlying integral type.
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
 constexpr auto to_underlying( EnumType e )
@@ -47,6 +55,7 @@ constexpr auto to_underlying( EnumType e )
 
 //----------------------------------------------------------------------------------------------------------------------
 
+/// Adapter template for converting string types. Specialize for custom string types.
 template < typename StringType >
 struct string_adapter
 {
@@ -55,6 +64,8 @@ struct string_adapter
 };
 
 //----------------------------------------------------------------------------------------------------------------------
+
+#ifndef NOVA_ENUMS_HAS_REFLECTION
 
 namespace impl {
 
@@ -65,10 +76,18 @@ struct is_registered_enum : std::false_type
 
 } // namespace impl
 
+/// True if EnumType is registered (via macro or reflection).
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
 constexpr inline bool is_registered_enum_v = impl::is_registered_enum< EnumType >::value;
 
+#else
+
+template < typename EnumType >
+    requires( std::is_enum_v< EnumType > )
+constexpr inline bool is_registered_enum_v = true;
+
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -90,15 +109,33 @@ namespace impl {
 
 template < typename EnumType, size_t Size >
     requires( std::is_enum_v< EnumType > )
-constexpr bool is_ordinal_table( std::array< EnumType, Size > list )
+consteval bool is_ordinal_table( std::array< EnumType, Size > list )
 {
     return std::ranges::equal( list, std::ranges::views::iota( size_t( 0 ), list.size() ), {}, to_underlying< EnumType > );
 }
 
 //----------------------------------------------------------------------------------------------------------------------
 
+#ifdef NOVA_ENUMS_HAS_REFLECTION
+
+template < typename EnumType >
+    requires( std::is_enum_v< EnumType > )
+constexpr bool determine_ordinality()
+{
+    constexpr size_t          N = std::meta::enumerators_of( ^^EnumType ).size();
+    std::array< EnumType, N > vals {};
+    size_t                    i = 0;
+    for ( auto m : std::meta::enumerators_of( ^^EnumType ) )
+        vals[ i++ ] = std::meta::extract< EnumType >( m );
+    return is_ordinal_table( vals );
+}
+
+#else
+
 template < typename EnumType >
 constexpr bool determine_ordinality();
+
+#endif // NOVA_ENUMS_HAS_REFLECTION
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
@@ -106,9 +143,20 @@ inline constexpr bool is_ordinal = determine_ordinality< EnumType >();
 
 //----------------------------------------------------------------------------------------------------------------------
 
+#ifdef NOVA_ENUMS_HAS_REFLECTION
+
+template < typename EnumType >
+    requires( std::is_enum_v< EnumType > )
+struct number_of_elements : std::integral_constant< size_t, std::meta::enumerators_of( ^^EnumType ).size() >
+{};
+
+#else
+
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
 struct number_of_elements;
+
+#endif // NOVA_ENUMS_HAS_REFLECTION
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
@@ -231,7 +279,7 @@ struct ordinal_enum_lookup_table : enum_lookup_table_common< EnumType, StringTyp
         return string_table[ to_underlying( e ) ];
     }
 
-    constexpr std::array< EnumType, number_of_elements > all_enums() const
+    consteval std::array< EnumType, number_of_elements > all_enums() const
     {
         std::array< EnumType, number_of_elements > ret;
         for ( size_t index : std::ranges::views::iota( size_t( 0 ), number_of_elements ) )
@@ -313,7 +361,7 @@ struct enum_lookup_table : enum_lookup_table_common< EnumType, StringType >
         return string_table.front().second;
     }
 
-    constexpr std::array< EnumType, number_of_elements > all_enums() const
+    consteval std::array< EnumType, number_of_elements > all_enums() const
     {
         std::array< EnumType, number_of_elements > ret;
         for ( size_t index : std::ranges::views::iota( size_t( 0 ), number_of_elements ) )
@@ -327,8 +375,44 @@ struct enum_lookup_table : enum_lookup_table_common< EnumType, StringType >
 
 //----------------------------------------------------------------------------------------------------------------------
 
+#ifdef NOVA_ENUMS_HAS_REFLECTION
+
+template < typename EnumType >
+    requires( std::is_enum_v< EnumType > && is_ordinal< EnumType > )
+consteval auto make_enum_table()
+{
+    constexpr size_t                                         N = number_of_elements_v< EnumType >;
+    std::array< std::pair< EnumType, std::string_view >, N > table {};
+    size_t                                                   i = 0;
+    for ( auto m : std::meta::enumerators_of( ^^EnumType ) )
+        table[ i++ ] = {
+            std::meta::extract< EnumType >( m ),
+            std::meta::identifier_of( m ),
+        };
+    return ordinal_enum_lookup_table< EnumType, std::string_view >( table );
+}
+
+template < typename EnumType >
+    requires( std::is_enum_v< EnumType > && !is_ordinal< EnumType > )
+consteval auto make_enum_table()
+{
+    constexpr size_t                                         N = number_of_elements_v< EnumType >;
+    std::array< std::pair< EnumType, std::string_view >, N > table {};
+    size_t                                                   i = 0;
+    for ( auto m : std::meta::enumerators_of( ^^EnumType ) )
+        table[ i++ ] = {
+            std::meta::extract< EnumType >( m ),
+            std::meta::identifier_of( m ),
+        };
+    return enum_lookup_table< EnumType, std::string_view >( table );
+}
+
+#else
+
 template < typename Enum >
 constexpr auto make_enum_table();
+
+#endif // NOVA_ENUMS_HAS_REFLECTION
 
 template < typename Enum, typename StringType >
 constexpr auto enum_table_for_string_type()
@@ -363,18 +447,29 @@ constexpr inline bool string_view_or_int_v
 
 //----------------------------------------------------------------------------------------------------------------------
 
+/// True if enum values are consecutive starting from 0. Enables O(1) enum-to-string lookup.
 template < typename EnumType >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
+#endif
 inline constexpr bool is_ordinal_v = impl::is_ordinal< EnumType >;
 
+/// Number of enumerators in the enum type.
 template < typename EnumType >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
+#endif
 inline constexpr size_t number_of_elements = impl::number_of_elements_v< EnumType >;
 
 //----------------------------------------------------------------------------------------------------------------------
 
+/// Check if integral value is a valid enumerator.
 template < typename EnumType, typename IntType >
-    requires( is_registered_enum_v< EnumType >, std::is_integral_v< IntType > )
+    requires(
+#ifndef NOVA_ENUMS_HAS_REFLECTION
+        is_registered_enum_v< EnumType >,
+#endif
+        std::is_integral_v< IntType > )
 constexpr bool is_valid( IntType arg )
 {
     return impl::enum_table< EnumType, std::string_view >.is_valid( arg );
@@ -382,16 +477,22 @@ constexpr bool is_valid( IntType arg )
 
 //----------------------------------------------------------------------------------------------------------------------
 
+/// Convert enum value to its string representation.
 template < typename EnumType >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
+#endif
 constexpr std::string_view to_string( EnumType value )
 {
     return impl::enum_table< EnumType, std::string_view >.to_string( value );
 }
 
+/// Convert enum value to string using custom StringType.
 template < typename StringType, typename EnumType >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
-auto to_string( EnumType value )
+#endif
+constexpr auto to_string( EnumType value )
 {
     return impl::static_enum_table< EnumType, StringType >().to_string( value );
 }
@@ -399,9 +500,13 @@ auto to_string( EnumType value )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-
+/// Convert string or integral value to enum. Returns std::nullopt if not found or invalid.
 template < typename EnumType, typename StringOrInt = std::string_view >
-    requires( is_registered_enum_v< EnumType >, impl::string_view_or_int_v< StringOrInt > )
+    requires(
+#ifndef NOVA_ENUMS_HAS_REFLECTION
+        is_registered_enum_v< EnumType >,
+#endif
+        impl::string_view_or_int_v< StringOrInt > )
 constexpr std::optional< EnumType > to_enum( const StringOrInt& string_or_int )
 {
     if constexpr ( std::is_convertible_v< StringOrInt, std::string_view > )
@@ -414,8 +519,13 @@ constexpr std::optional< EnumType > to_enum( const StringOrInt& string_or_int )
     }
 }
 
+/// Convert custom string type to enum (with runtime allocation). Returns std::nullopt if not found.
 template < typename EnumType, typename StringOrInt >
-    requires( is_registered_enum_v< EnumType >, !impl::string_view_or_int_v< StringOrInt > )
+    requires(
+#ifndef NOVA_ENUMS_HAS_REFLECTION
+        is_registered_enum_v< EnumType >,
+#endif
+        !impl::string_view_or_int_v< StringOrInt > )
 std::optional< EnumType > to_enum( const StringOrInt& string_or_int )
 {
     return impl::static_enum_table< EnumType, StringOrInt >().to_enum( string_or_int );
@@ -424,16 +534,25 @@ std::optional< EnumType > to_enum( const StringOrInt& string_or_int )
 
 //----------------------------------------------------------------------------------------------------------------------
 
+/// Compile-time array of all enumerators in definition order.
 template < typename EnumType >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
+#endif
 inline constexpr auto all_enum_values = impl::enum_table< EnumType >.all_enums();
 
+/// Runtime array of string representations for all enumerators in definition order.
 template < typename EnumType, typename StringType = std::string_view >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
+#endif
 inline auto all_enum_strings = impl::static_enum_table< EnumType, StringType >().all_enum_strings();
 
+/// Runtime array of string representations for all enumerators in definition order.
 template < typename EnumType >
+#ifndef NOVA_ENUMS_HAS_REFLECTION
     requires( is_registered_enum_v< EnumType > )
+#endif
 inline constexpr auto all_enum_strings< EnumType, std::string_view >
     = impl::enum_table< EnumType, std::string_view >.all_enum_strings();
 
@@ -444,95 +563,110 @@ inline constexpr auto all_enum_strings< EnumType, std::string_view >
 
 //----------------------------------------------------------------------------------------------------------------------
 
-#define NOVA_ENUMS_IMPL_MAKE_TABLE_ENTRY_MACRO( r, data, element ) \
-    std::pair {                                                    \
-        data::element,                                             \
-        std::string_view { BOOST_PP_STRINGIZE( element ) },        \
-        },
+#ifndef NOVA_ENUMS_HAS_REFLECTION
 
-#define NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, LIST )                                                     \
-                                                                                                               \
-    template <>                                                                                                \
-    constexpr auto nova::enums::impl::make_enum_table< TYPE >()                                                \
-    {                                                                                                          \
-        constexpr auto table_definition = std::to_array< std::pair< TYPE, std::string_view > >(                \
-            { BOOST_PP_LIST_FOR_EACH( NOVA_ENUMS_IMPL_MAKE_TABLE_ENTRY_MACRO, TYPE, LIST ) } );                \
-                                                                                                               \
-        if constexpr ( nova::enums::impl::is_ordinal< TYPE > )                                                 \
-            return nova::enums::impl::ordinal_enum_lookup_table< TYPE, std::string_view >( table_definition ); \
-        else                                                                                                   \
-            return nova::enums::impl::enum_lookup_table< TYPE, std::string_view >( table_definition );         \
-    };
+#  define NOVA_ENUMS_IMPL_MAKE_TABLE_ENTRY_MACRO( r, data, element ) \
+      std::pair {                                                    \
+          data::element,                                             \
+          std::string_view { BOOST_PP_STRINGIZE( element ) },          \
+          },
 
-#define NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE( TYPE, ... ) \
-    NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, BOOST_PP_VARIADIC_TO_LIST( __VA_ARGS__ ) )
+#  define NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, LIST )                                                     \
+                                                                                                                 \
+      template <>                                                                                                \
+      constexpr auto nova::enums::impl::make_enum_table< TYPE >()                                                \
+      {                                                                                                          \
+          constexpr auto table_definition = std::to_array< std::pair< TYPE, std::string_view > >(                \
+              { BOOST_PP_LIST_FOR_EACH( NOVA_ENUMS_IMPL_MAKE_TABLE_ENTRY_MACRO, TYPE, LIST ) } );                \
+                                                                                                                 \
+          if constexpr ( nova::enums::impl::is_ordinal< TYPE > )                                                 \
+              return nova::enums::impl::ordinal_enum_lookup_table< TYPE, std::string_view >( table_definition ); \
+          else                                                                                                   \
+              return nova::enums::impl::enum_lookup_table< TYPE, std::string_view >( table_definition );         \
+      };
 
-//----------------------------------------------------------------------------------------------------------------------
-
-#define NOVA_ENUMS_IMPL_ENUM_LIST_MACRO( r, data, element ) data::element,
-
-#define NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, LIST )                                                  \
-                                                                                                                  \
-    template <>                                                                                                   \
-    constexpr bool nova::enums::impl::determine_ordinality< TYPE >()                                              \
-    {                                                                                                             \
-        constexpr auto table_definition                                                                           \
-            = std::to_array< TYPE >( { BOOST_PP_LIST_FOR_EACH( NOVA_ENUMS_IMPL_ENUM_LIST_MACRO, TYPE, LIST ) } ); \
-                                                                                                                  \
-        return nova::enums::impl::is_ordinal_table( table_definition );                                           \
-    }
-
-#define NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR( TYPE, ... ) \
-    NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, BOOST_PP_VARIADIC_TO_LIST( __VA_ARGS__ ) )
+#  define NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE( TYPE, ... ) \
+      NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, BOOST_PP_VARIADIC_TO_LIST( __VA_ARGS__ ) )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-#define NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS_LIST( TYPE, LIST )                                                      \
-    template <>                                                                                                         \
-    struct nova::enums::impl::number_of_elements< TYPE > : std::integral_constant< size_t, BOOST_PP_LIST_SIZE( LIST ) > \
-    {};
+#  define NOVA_ENUMS_IMPL_ENUM_LIST_MACRO( r, data, element ) data::element,
 
-#define NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS( TYPE, ... )                    \
-    template <>                                                                 \
-    struct nova::enums::impl::number_of_elements< TYPE > :                      \
-        std::integral_constant< size_t, BOOST_PP_VARIADIC_SIZE( __VA_ARGS__ ) > \
-    {};
+#  define NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, LIST )                                                  \
+                                                                                                                    \
+      template <>                                                                                                   \
+      constexpr bool nova::enums::impl::determine_ordinality< TYPE >()                                              \
+      {                                                                                                             \
+          constexpr auto table_definition                                                                           \
+              = std::to_array< TYPE >( { BOOST_PP_LIST_FOR_EACH( NOVA_ENUMS_IMPL_ENUM_LIST_MACRO, TYPE, LIST ) } ); \
+                                                                                                                    \
+          return nova::enums::impl::is_ordinal_table( table_definition );                                           \
+      }
 
-//----------------------------------------------------------------------------------------------------------------------
-
-#define NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )                   \
-    template <>                                                           \
-    struct nova::enums::impl::is_registered_enum< TYPE > : std::true_type \
-    {};
+#  define NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR( TYPE, ... ) \
+      NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, BOOST_PP_VARIADIC_TO_LIST( __VA_ARGS__ ) )
 
 //----------------------------------------------------------------------------------------------------------------------
 
-#define NOVA_ENUMS_REGISTER( TYPE, ... )                         \
-    NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )              \
-    NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS( TYPE, __VA_ARGS__ ) \
-    NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR( TYPE, __VA_ARGS__ )   \
-    NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE( TYPE, __VA_ARGS__ )         \
-    static_assert( true, "force semicolon" )
+#  define NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS_LIST( TYPE, LIST )   \
+      template <>                                                      \
+      struct nova::enums::impl::number_of_elements< TYPE > :           \
+          std::integral_constant< size_t, BOOST_PP_LIST_SIZE( LIST ) > \
+      {};
 
-#define NOVA_ENUMS_REGISTER_LIST( TYPE, LIST )                 \
-    NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )            \
-    NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS_LIST( TYPE, LIST ) \
-    NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, LIST )   \
-    NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, LIST )         \
-    static_assert( true, "force semicolon" )
+#  define NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS( TYPE, ... )                    \
+      template <>                                                                 \
+      struct nova::enums::impl::number_of_elements< TYPE > :                      \
+          std::integral_constant< size_t, BOOST_PP_VARIADIC_SIZE( __VA_ARGS__ ) > \
+      {};
 
-#define NOVA_ENUMS_REGISTER_SEQ( TYPE, SEQ )                                          \
-    NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )                                   \
-    NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS_LIST( TYPE, BOOST_PP_SEQ_TO_LIST( SEQ ) ) \
-    NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, BOOST_PP_SEQ_TO_LIST( SEQ ) )   \
-    NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, BOOST_PP_SEQ_TO_LIST( SEQ ) )         \
-    static_assert( true, "force semicolon" )
+//----------------------------------------------------------------------------------------------------------------------
 
+#  define NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )                   \
+      template <>                                                           \
+      struct nova::enums::impl::is_registered_enum< TYPE > : std::true_type \
+      {};
+
+//----------------------------------------------------------------------------------------------------------------------
+
+/// Register enum type with string mappings (non-reflection build).
+/// List enumerators as variadic args: NOVA_ENUMS_REGISTER(MyEnum, Value1, Value2, Value3)
+#  define NOVA_ENUMS_REGISTER( TYPE, ... )                         \
+      NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )              \
+      NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS( TYPE, __VA_ARGS__ ) \
+      NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR( TYPE, __VA_ARGS__ )   \
+      NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE( TYPE, __VA_ARGS__ )         \
+      static_assert( true, "force semicolon" )
+
+#  define NOVA_ENUMS_REGISTER_LIST( TYPE, LIST )                 \
+      NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )            \
+      NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS_LIST( TYPE, LIST ) \
+      NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, LIST )   \
+      NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, LIST )         \
+      static_assert( true, "force semicolon" )
+
+#  define NOVA_ENUMS_REGISTER_SEQ( TYPE, SEQ )                                          \
+      NOVA_ENUMS_IMPL_MAKE_REGISTRATION_TRAIT( TYPE )                                   \
+      NOVA_ENUMS_IMPL_MAKE_NUMBER_OF_ELEMENTS_LIST( TYPE, BOOST_PP_SEQ_TO_LIST( SEQ ) ) \
+      NOVA_ENUMS_IMPL_MAKE_ORDINAL_DETECTOR_LIST( TYPE, BOOST_PP_SEQ_TO_LIST( SEQ ) )   \
+      NOVA_ENUMS_IMPL_MAKE_ENUM_TABLE_LIST( TYPE, BOOST_PP_SEQ_TO_LIST( SEQ ) )         \
+      static_assert( true, "force semicolon" )
+
+
+//----------------------------------------------------------------------------------------------------------------------
+
+#else
+
+#  define NOVA_ENUMS_REGISTER( TYPE, ... )       static_assert( true, "force semicolon" )
+#  define NOVA_ENUMS_REGISTER_LIST( TYPE, LIST ) static_assert( true, "force semicolon" )
+#  define NOVA_ENUMS_REGISTER_SEQ( TYPE, SEQ )   static_assert( true, "force semicolon" )
+
+#endif // !NOVA_ENUMS_HAS_REFLECTION
 
 //----------------------------------------------------------------------------------------------------------------------
 
 #if __has_include( <fmt/format.h> )
-#    include <fmt/format.h>
+#  include <fmt/format.h>
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
@@ -549,7 +683,7 @@ struct fmt::formatter< EnumType, char > : fmt::formatter< std::string_view >
 
 
 #if __cpp_lib_format
-#    include <format>
+#  include <format>
 
 template < typename EnumType >
     requires( std::is_enum_v< EnumType > )
@@ -562,4 +696,8 @@ struct std::formatter< EnumType, char > : std::formatter< std::string_view >
     }
 };
 
+#endif
+
+#ifdef NOVA_ENUMS_HAS_REFLECTION
+#  undef NOVA_ENUMS_HAS_REFLECTION
 #endif

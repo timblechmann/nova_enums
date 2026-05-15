@@ -15,14 +15,36 @@ endif()
 
 ########################################################################################################################
 
-add_custom_target(nova_enums_project_files SOURCES
-    .clang-tidy
-    .pre-commit-config.yaml
-    _clang-format
-    Readme.md
-    License.txt
-    .github/workflows/ci.yml
-)
+include(CheckCXXSourceCompiles)
+
+check_cxx_source_compiles("
+#include <meta>
+
+struct Foo { int x; };
+
+constexpr auto r = ^^Foo;
+
+int main() {}
+" NOVA_SYNC_HAVE_CPP26_REFLECTION)
+
+if (NOVA_SYNC_HAVE_CPP26_REFLECTION)
+    message(STATUS "C++26 reflection is supported")
+else()
+    message(STATUS "C++26 reflection is NOT supported")
+endif()
+
+########################################################################################################################
+
+if (PROJECT_IS_TOP_LEVEL)
+    add_custom_target(nova_enums_project_files SOURCES
+        .clang-tidy
+        .pre-commit-config.yaml
+        _clang-format
+        Readme.md
+        License.txt
+        .github/workflows/ci.yml
+    )
+endif()
 
 ########################################################################################################################
 # Bootstrap CPM.cmake (download to build dir on first configure)
@@ -45,7 +67,7 @@ endfunction()
 
 ########################################################################################################################
 
-if(NOT (TARGET Boost::preprocessor OR TARGET Boost::headers))
+if(NOT (TARGET Boost::preprocessor OR TARGET Boost::headers) AND NOT NOVA_SYNC_HAVE_CPP26_REFLECTION)
     nova_enums_install_cpm()
     CPMAddPackage(
         NAME Boost
@@ -70,14 +92,17 @@ add_library(nova_enums INTERFACE)
 add_library(nova::enums ALIAS nova_enums)
 
 target_include_directories(nova_enums INTERFACE inc)
-if (TARGET Boost::preprocessor)
-    target_link_libraries(nova_enums
-        INTERFACE Boost::preprocessor
-    )
-else()
-    target_link_libraries(nova_enums
-        INTERFACE Boost::headers
-    )
+
+if (NOT NOVA_SYNC_HAVE_CPP26_REFLECTION)
+    if (TARGET Boost::preprocessor)
+        target_link_libraries(nova_enums
+            INTERFACE Boost::preprocessor
+        )
+    else()
+        target_link_libraries(nova_enums
+            INTERFACE Boost::headers
+        )
+    endif()
 endif()
 
 target_sources(nova_enums PUBLIC FILE_SET HEADERS FILES ${Headers} )
